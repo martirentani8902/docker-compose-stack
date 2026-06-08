@@ -1,0 +1,24 @@
+services:
+  backend:
+    build: ./backend/
+    env_file:
+      - ./backend/.env
+    networks:
+      - proxy-backend
+  postgre:
+    image: postgres:16-alpine
+    env_file:
+      - ./postgre.env
+    networks:
+      - backend-postgre
+    volumes:
+      - postgre-data:/var/lib/postgresql/data
+  proxy:
+  prometheus:
+  grafana:
+
+networks:
+  proxy-backend:
+  backend-postgre:
+volumes:
+  postgre-data:
