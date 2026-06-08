@@ -1,5 +1,17 @@
 services:
-  backend:
+  backend1:
+    build: ./backend/
+    env_file:
+      - ./backend/.env
+    networks:
+      - proxy-backend
+  backend2:
+    build: ./backend/
+    env_file:
+      - ./backend/.env
+    networks:
+      - proxy-backend
+  backend3:
     build: ./backend/
     env_file:
       - ./backend/.env
@@ -14,8 +26,15 @@ services:
     volumes:
       - postgre-data:/var/lib/postgresql/data
   proxy:
-  prometheus:
-  grafana:
+    image: nginx:alpine
+    networks:
+      - proxy-backend
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - 80:80
+  #prometheus:
+  #grafana:
 
 networks:
   proxy-backend:
