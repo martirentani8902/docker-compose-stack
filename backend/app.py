@@ -138,7 +138,10 @@ def metrics():
     return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 with app.app_context():
-    init_db()
+    try:
+        init_db()
+    except Exception:
+        pass
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
