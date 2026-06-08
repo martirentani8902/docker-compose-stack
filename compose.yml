@@ -43,17 +43,28 @@ services:
     image: prom/prometheus
     networks:
       - prometheus_backend
+      - prometheus_grafana
     volumes:
       - prometheus_data:/prometheus
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - 9090:9090  
-  #grafana:
-
+  grafana:
+    image: grafana/grafana
+    networks:
+      - prometheus_grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - 3000:3000
 networks:
   proxy-backend:
   backend-postgre:
   prometheus_backend:
+  prometheus_grafana:
 volumes:
   postgre-data:
   prometheus_data:
+  grafana-data:
