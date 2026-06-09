@@ -1,50 +1,71 @@
 # docker-compose-stack
-
 Infraestructura contenerizada con una API REST en Python/Flask, balanceo de carga con Nginx, persistencia en PostgreSQL, y observabilidad con Prometheus y Grafana.
-
 Proyecto de práctica orientado a patrones de arquitectura usados en entornos productivos reales.
+
+> Este branch (`kubernetes`) contiene los manifiestos para desplegar el stack en Kubernetes. Para la versión con Docker Compose ver el branch [`master`](../../tree/master).
 
 ---
 
 ## Stack
-
 | Capa | Tecnología |
 |---|---|
 | API | Python 3 + Flask |
 | Base de datos | PostgreSQL 16 |
-| Load balancer | Nginx |
+| Ingress | Nginx Ingress Controller |
 | Monitoreo | Prometheus + Grafana |
-| Contenedores | Docker + Docker Compose |
+| Orquestación | Kubernetes (minikube) |
 
 ---
 
 ## Arquitectura
-
 ```
-                        ┌─────────────────────────────────┐
-          HTTP :80      │           Docker network         │
-Client ──────────────► Nginx (reverse proxy / LB)         │
-                        │     ┌──────────┐                 │
-                        │     │ backend1 │──┐              │
-                        │     ├──────────┤  │              │
-                        │     │ backend2 │──┼──► PostgreSQL│
-                        │     ├──────────┤  │              │
-                        │     │ backend3 │──┘              │
-                        │     └──────────┘                 │
-                        │          │ /metrics              │
-                        │          ▼                       │
-                        │     Prometheus ──► Grafana       │
-                        └─────────────────────────────────┘
+                        ┌─────────────────────────────────────┐
+          HTTP :80      │           Kubernetes cluster         │
+Client ──────────────► Ingress (nginx ingress controller)      │
+                        │     ┌──────────┐                     │
+                        │     │  Pod 1   │──┐                  │
+                        │     ├──────────┤  │                  │
+                        │     │  Pod 2   │──┼──► PostgreSQL    │
+                        │     ├──────────┤  │                  │
+                        │     │  Pod 3   │──┘                  │
+                        │     └──────────┘                     │
+                        │  (backend-service / ClusterIP)       │
+                        │          │ /metrics                  │
+                        │          ▼                           │
+                        │     Prometheus ──► Grafana :3000     │
+                        │                (LoadBalancer)        │
+                        └─────────────────────────────────────┘
 ```
 
-- Nginx distribuye el tráfico entre los tres backends
-- Prometheus scrapea `/metrics` de cada backend cada 10 segundos
-- Grafana visualiza las métricas en tiempo real
+- El Ingress reemplaza a Nginx como contenedor — el balanceo de carga lo maneja el Service de Kubernetes
+- Prometheus scrapea `/metrics` de cada Pod del backend cada 10 segundos
+- Grafana visualiza las métricas en tiempo real y es accesible externamente en el puerto 3000
+
+---
+
+## Estructura del proyecto
+```
+kubernetes/
+├── backend-deployment.yml
+├── backend-ingress.yml
+├── backend-service.yml
+├── grafana-deployment.yml
+├── grafana-pv.yml
+├── grafana-pvc.yml
+├── grafana-service.yml
+├── postgre-deployment.yml
+├── postgre-pv.yml
+├── postgre-pvc.yml
+├── postgre-service.yml
+├── prometheus-deployment.yml
+├── prometheus-pv.yml
+├── prometheus-pvc.yml
+└── prometheus-service.yml
+```
 
 ---
 
 ## API Endpoints
-
 | Método | Endpoint | Descripción |
 |---|---|---|
 | GET | `/health` | Liveness check (verifica conexión a DB) |
@@ -56,13 +77,11 @@ Client ──────────────► Nginx (reverse proxy / LB) 
 | DELETE | `/items/<id>` | Eliminar un item |
 
 ### Ejemplo
-
 ```bash
-curl -X POST http://localhost/items \
+curl -X POST http://$(minikube ip)/items \
   -H "Content-Type: application/json" \
   -d '{"name": "server-01", "description": "Primary web server"}'
 ```
-
 ```json
 {
   "id": 1,
@@ -76,38 +95,68 @@ curl -X POST http://localhost/items \
 
 ## Levantar el proyecto
 
-**Requisitos:** Docker y Docker Compose instalados.
+**Requisitos:** minikube y kubectl instalados.
 
+**1. Iniciar minikube y habilitar el Ingress:**
 ```bash
-git clone https://github.com/martirentani8902/docker-compose-stack.git
-cd docker-compose-stack
-docker compose up --build
+minikube start
+minikube addons enable ingress
+```
+
+**2. Apuntar Docker al daemon de minikube y buildear la imagen:**
+```bash
+# Linux/Mac
+eval $(minikube docker-env)
+
+# PowerShell
+minikube docker-env | Invoke-Expression
+
+docker build -t backend ./backend
+```
+
+**3. Crear los Secrets:**
+```bash
+kubectl create secret generic backend-secret --from-env-file=./backend/.env
+kubectl create secret generic postgres-secret --from-env-file=./postgre.env
+```
+
+**4. Crear los ConfigMaps:**
+```bash
+kubectl create configmap prometheus-config --from-file=./prometheus.yml
+kubectl create configmap grafana-dashboards --from-file=./grafana/dashboards
+kubectl create configmap grafana-provisioning-dashboards --from-file=./grafana/provisioning/dashboards
+kubectl create configmap grafana-provisioning-datasources --from-file=./grafana/provisioning/datasources
+```
+
+**5. Aplicar los manifiestos:**
+```bash
+kubectl apply -f kubernetes/
+```
+
+**6. Obtener la IP del cluster:**
+```bash
+minikube ip
 ```
 
 | Servicio | URL |
 |---|---|
-| API (vía Nginx) | http://localhost |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 |
+| API (vía Ingress) | `http://$(minikube ip)` |
+| Grafana | `http://$(minikube ip):3000` |
+| Prometheus | `kubectl port-forward service/prometheus-service 9090:9090` |
 
 ---
 
 ## Observabilidad
-
 Cada request es instrumentado automáticamente con dos métricas Prometheus:
-
 - `app_requests_total` — contador de requests por endpoint, método HTTP y status code
 - `app_request_latency_seconds` — histograma de latencia por endpoint
 
 Queries PromQL útiles:
-
 ```promql
 # Rate de requests por segundo
 sum by(endpoint) (rate(app_requests_total[5m]))
-
 # Tasa de errores 5xx
 sum(rate(app_requests_total{status=~"5.."}[5m]))
-
 # Latencia percentil 95
 histogram_quantile(0.95, sum by(le, endpoint) (rate(app_request_latency_seconds_bucket[5m])))
 ```
@@ -115,7 +164,6 @@ histogram_quantile(0.95, sum by(le, endpoint) (rate(app_request_latency_seconds_
 ---
 
 ## Variables de entorno
-
 | Variable | Descripción |
 |---|---|
 | `DB_HOST` | Host de PostgreSQL |
@@ -123,4 +171,4 @@ histogram_quantile(0.95, sum by(le, endpoint) (rate(app_request_latency_seconds_
 | `DB_USER` | Usuario |
 | `DB_PASSWORD` | Contraseña |
 
-Configuradas en `backend/.env` (no incluido en el repo).
+Configuradas como Secrets de Kubernetes creados desde `backend/.env` (no incluido en el repo). Ver `postgre.env.example` para referencia.
