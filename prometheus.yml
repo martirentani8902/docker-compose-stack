@@ -5,6 +5,4 @@ scrape_configs:
   - job_name: 'flask-api'
     static_configs:
       - targets: 
-        - 'backend1:5000'
-        - 'backend2:5000'
-        - 'backend3:5000'
+        - 'backend-service:5000'
