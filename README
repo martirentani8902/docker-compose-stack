@@ -1,0 +1,126 @@
+# docker-compose-stack
+
+Infraestructura contenerizada con una API REST en Python/Flask, balanceo de carga con Nginx, persistencia en PostgreSQL, y observabilidad con Prometheus y Grafana.
+
+Proyecto de práctica orientado a patrones de arquitectura usados en entornos productivos reales.
+
+---
+
+## Stack
+
+| Capa | Tecnología |
+|---|---|
+| API | Python 3 + Flask |
+| Base de datos | PostgreSQL 16 |
+| Load balancer | Nginx |
+| Monitoreo | Prometheus + Grafana |
+| Contenedores | Docker + Docker Compose |
+
+---
+
+## Arquitectura
+
+```
+                        ┌─────────────────────────────────┐
+          HTTP :80      │           Docker network         │
+Client ──────────────► Nginx (reverse proxy / LB)         │
+                        │     ┌──────────┐                 │
+                        │     │ backend1 │──┐              │
+                        │     ├──────────┤  │              │
+                        │     │ backend2 │──┼──► PostgreSQL│
+                        │     ├──────────┤  │              │
+                        │     │ backend3 │──┘              │
+                        │     └──────────┘                 │
+                        │          │ /metrics              │
+                        │          ▼                       │
+                        │     Prometheus ──► Grafana       │
+                        └─────────────────────────────────┘
+```
+
+- Nginx distribuye el tráfico entre los tres backends
+- Prometheus scrapea `/metrics` de cada backend cada 10 segundos
+- Grafana visualiza las métricas en tiempo real
+
+---
+
+## API Endpoints
+
+| Método | Endpoint | Descripción |
+|---|---|---|
+| GET | `/health` | Liveness check (verifica conexión a DB) |
+| GET | `/metrics` | Métricas Prometheus |
+| GET | `/items` | Listar todos los items |
+| GET | `/items/<id>` | Obtener un item |
+| POST | `/items` | Crear un item |
+| PUT | `/items/<id>` | Actualizar un item |
+| DELETE | `/items/<id>` | Eliminar un item |
+
+### Ejemplo
+
+```bash
+curl -X POST http://localhost/items \
+  -H "Content-Type: application/json" \
+  -d '{"name": "server-01", "description": "Primary web server"}'
+```
+
+```json
+{
+  "id": 1,
+  "name": "server-01",
+  "description": "Primary web server",
+  "created_at": "2026-06-08T12:00:00"
+}
+```
+
+---
+
+## Levantar el proyecto
+
+**Requisitos:** Docker y Docker Compose instalados.
+
+```bash
+git clone https://github.com/martirentani8902/docker-compose-stack.git
+cd docker-compose-stack
+docker compose up --build
+```
+
+| Servicio | URL |
+|---|---|
+| API (vía Nginx) | http://localhost |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 |
+
+---
+
+## Observabilidad
+
+Cada request es instrumentado automáticamente con dos métricas Prometheus:
+
+- `app_requests_total` — contador de requests por endpoint, método HTTP y status code
+- `app_request_latency_seconds` — histograma de latencia por endpoint
+
+Queries PromQL útiles:
+
+```promql
+# Rate de requests por segundo
+sum by(endpoint) (rate(app_requests_total[5m]))
+
+# Tasa de errores 5xx
+sum(rate(app_requests_total{status=~"5.."}[5m]))
+
+# Latencia percentil 95
+histogram_quantile(0.95, sum by(le, endpoint) (rate(app_request_latency_seconds_bucket[5m])))
+```
+
+---
+
+## Variables de entorno
+
+| Variable | Descripción |
+|---|---|
+| `DB_HOST` | Host de PostgreSQL |
+| `DB_NAME` | Nombre de la base de datos |
+| `DB_USER` | Usuario |
+| `DB_PASSWORD` | Contraseña |
+
+Configuradas en `backend/.env` (no incluido en el repo).
