@@ -1,11 +1,11 @@
 apiVersion: v1
-kind: PersistenVolume
+kind: PersistentVolume
 metadata:
   name: postgre-pv
 spec: 
   capacity:
     storage: 5Gi
-  accessMode:
+  accessModes:
     - ReadWriteOnce
   hostPath:
     path: /data/postgres

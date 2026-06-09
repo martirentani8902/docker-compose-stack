@@ -4,8 +4,7 @@ metadata:
   name: backend-service
 spec:
   selector:
-    labels:
-      app: backend
+    app: backend
   type: ClusterIP
   ports:
     - port: 5000
